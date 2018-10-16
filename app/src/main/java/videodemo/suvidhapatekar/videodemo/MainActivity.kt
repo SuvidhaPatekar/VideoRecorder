@@ -43,11 +43,13 @@ class MainActivity : AppCompatActivity() {
   private lateinit var size: Size
   private lateinit var videoSize: Size
   private var previewSurface: Surface? = null
+  private var recorderSurface: Surface? = null
   private var handler: Handler? = null
   private var handlerThread: HandlerThread? = null
   private lateinit var mediaRecorder: MediaRecorder
   private var videoPath: String? = null
   private var isRecordingVideo: Boolean = false
+  private var request: CaptureRequest.Builder? = null
 
   private val surfaceTextureListener = object : SurfaceTextureListener {
     override fun onSurfaceTextureSizeChanged(
@@ -83,8 +85,8 @@ class MainActivity : AppCompatActivity() {
       camera: CameraDevice,
       error: Int
     ) {
-      camera.close()
-      cameraDevice = null
+      /*camera.close()
+      cameraDevice = null*/
     }
 
     override fun onOpened(camera: CameraDevice) {
@@ -192,30 +194,24 @@ class MainActivity : AppCompatActivity() {
   }
 
   fun captureSurface() {
-    Log.d("capture surface", "Inside capture surface")
     closePreviewSession()
     previewSurface = Surface(txvCamera.surfaceTexture)
+
     val surfaces = Arrays.asList(previewSurface!!)
-    if (cameraDevice == null) {
-      Log.d("camera device", "camera device is null")
-      cameraDevice?.createCaptureSession(surfaces, object : CameraCaptureSession.StateCallback() {
-        override fun onConfigureFailed(session: CameraCaptureSession?) {
+    cameraDevice?.createCaptureSession(surfaces, object : CameraCaptureSession.StateCallback() {
+      override fun onConfigureFailed(session: CameraCaptureSession?) {
 
-        }
+      }
 
-        override fun onConfigured(session: CameraCaptureSession) {
-          if (cameraDevice == null) return
-          cameraCaptureSession = session
-          startSession()
-        }
-      }, handler)
-    } else {
-      Log.d("camera device", "camera device is not null")
-    }
+      override fun onConfigured(session: CameraCaptureSession) {
+        if (cameraDevice == null) return
+        cameraCaptureSession = session
+        startSession()
+      }
+    }, handler)
   }
 
   fun startSession() {
-    Log.d("Start session", "Inside start session")
     try {
       cameraDevice?.let {
         val request = it.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
@@ -283,8 +279,8 @@ class MainActivity : AppCompatActivity() {
       videoPath = getVideoFilePath()
     }
     mediaRecorder.setOutputFile(videoPath)
-    //mediaRecorder.setVideoEncodingBitRate(10000000)
-    //mediaRecorder.setVideoFrameRate(30)
+    mediaRecorder.setVideoEncodingBitRate(10000000)
+    mediaRecorder.setVideoFrameRate(30)
     mediaRecorder.setVideoSize(videoSize.width, videoSize.height)
     mediaRecorder.setVideoEncoder(MediaRecorder.VideoEncoder.MPEG_4_SP)
     mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
@@ -297,53 +293,69 @@ class MainActivity : AppCompatActivity() {
   }
 
   private fun startRecordingVideo() {
-    Log.d("start recording", "Inside start recording video")
-    closePreviewSession();
-    setUpMediaRecorder();
+    closePreviewSession()
+    setUpMediaRecorder()
+
     val texture = txvCamera.surfaceTexture
     texture.setDefaultBufferSize(size.width, size.height)
 
-    if (cameraDevice != null) {
-      Log.d("builder", "builder is not null")
-      val builder = cameraDevice?.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
+    request = cameraDevice?.createCaptureRequest(CameraDevice.TEMPLATE_RECORD)
 
-      // Set up Surface for the camera preview
-      // Set up Surface for the MediaRecorder
-      val recorderSurface = mediaRecorder.surface
-      val surfaces = Arrays.asList(recorderSurface)
-      builder?.addTarget(recorderSurface)
+    // Set up Surface for the camera preview
+    // Set up Surface for the MediaRecorder
+    recorderSurface = mediaRecorder.surface
+    val surfaces = Arrays.asList(previewSurface, recorderSurface)
 
-      // Start a capture session
-      // Once the session starts, we can update the UI and start recording
-      cameraDevice?.createCaptureSession(surfaces, object : CameraCaptureSession.StateCallback() {
-        override fun onConfigured(session: CameraCaptureSession?) {
-          cameraCaptureSession = session
-          startSession()
+    request?.addTarget(previewSurface)
+    request?.addTarget(recorderSurface)
+
+    // Start a capture session
+    // Once the session starts, we can update the UI and start recording
+    cameraDevice?.createCaptureSession(surfaces, object : CameraCaptureSession.StateCallback() {
+      override fun onConfigured(session: CameraCaptureSession?) {
+        cameraCaptureSession = session
+        updatePreview()
+
+        runOnUiThread {
           isRecordingVideo = !isRecordingVideo
           btnRecordVideo.text = "stop"
           mediaRecorder.start()
         }
+      }
 
-        override fun onConfigureFailed(session: CameraCaptureSession?) {
+      override fun onConfigureFailed(session: CameraCaptureSession?) {
 
-        }
+      }
 
-      }, handler)
-    } else {
-      Log.d("builder", "builder is null")
+    }, handler)
+  }
+
+  private fun updatePreview() {
+    if (null == cameraDevice) {
+      return
     }
+    try {
+      val thread = HandlerThread("CameraPreview")
+      thread.start()
+      cameraCaptureSession?.setRepeatingRequest(request?.build(), null, handler)
+    } catch (e: CameraAccessException) {
+      e.printStackTrace()
+    }
+
   }
 
   private fun stopRecordingVideo() {
-    Log.d("stop recording", "Inside stop recording video")
-
     // UI
     isRecordingVideo = false
 
     // Stop recording
-    mediaRecorder.stop()
-    mediaRecorder.reset()
-    btnRecordVideo.text = "start"
+    try {
+      mediaRecorder.stop()
+      mediaRecorder.reset()
+      btnRecordVideo.text = "start"
+    } catch (e: Exception) {
+      e.printStackTrace()
+    }
 
     videoPath = null
     startCamera()
