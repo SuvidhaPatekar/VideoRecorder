@@ -16,9 +16,11 @@ import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.TotalCaptureResult
 import android.hardware.camera2.params.StreamConfigurationMap
 import android.media.MediaRecorder
+import android.os.Build.VERSION_CODES
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
+import android.support.annotation.RequiresApi
 import android.support.v4.app.ActivityCompat
 import android.support.v4.content.ContextCompat
 import android.support.v7.app.AppCompatActivity
@@ -26,8 +28,10 @@ import android.util.Log
 import android.util.Size
 import android.view.Surface
 import android.view.TextureView.SurfaceTextureListener
+import android.view.View
 import android.widget.Toast
 import kotlinx.android.synthetic.main.activity_main.toolbar
+import kotlinx.android.synthetic.main.content_main.btnPause
 import kotlinx.android.synthetic.main.content_main.btnRecordVideo
 import kotlinx.android.synthetic.main.content_main.txvCamera
 import java.util.Arrays
@@ -49,6 +53,7 @@ class MainActivity : AppCompatActivity() {
   private lateinit var mediaRecorder: MediaRecorder
   private var videoPath: String? = null
   private var isRecordingVideo: Boolean = false
+  private var isVideoPause: Boolean = false
   private var request: CaptureRequest.Builder? = null
 
   private val surfaceTextureListener = object : SurfaceTextureListener {
@@ -95,16 +100,28 @@ class MainActivity : AppCompatActivity() {
     }
   }
 
+  @RequiresApi(VERSION_CODES.N)
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     setContentView(R.layout.activity_main)
     setSupportActionBar(toolbar)
-    btnRecordVideo.text = "start"
     btnRecordVideo.setOnClickListener {
       if (isRecordingVideo) {
         stopRecordingVideo()
       } else {
         startRecordingVideo()
+      }
+    }
+
+    btnPause.setOnClickListener {
+      if (!isVideoPause) {
+        pauseRecordingVideo()
+        btnPause.setText(R.string.resume)
+        isVideoPause = !isVideoPause
+      } else {
+        resumeRecordingVideo()
+        btnPause.setText(R.string.pause)
+        isVideoPause = !isVideoPause
       }
     }
   }
@@ -318,7 +335,8 @@ class MainActivity : AppCompatActivity() {
 
         runOnUiThread {
           isRecordingVideo = !isRecordingVideo
-          btnRecordVideo.text = "stop"
+          btnRecordVideo.setText(R.string.stop)
+          btnPause.visibility = View.VISIBLE
           mediaRecorder.start()
         }
       }
@@ -352,13 +370,24 @@ class MainActivity : AppCompatActivity() {
     try {
       mediaRecorder.stop()
       mediaRecorder.reset()
-      btnRecordVideo.text = "start"
+      btnRecordVideo.setText(R.string.start)
+      btnPause.visibility = View.GONE
     } catch (e: Exception) {
       e.printStackTrace()
     }
 
     videoPath = null
     startCamera()
+  }
+
+  @RequiresApi(VERSION_CODES.N)
+  private fun pauseRecordingVideo() {
+    mediaRecorder.pause()
+  }
+
+  @RequiresApi(VERSION_CODES.N)
+  private fun resumeRecordingVideo() {
+    mediaRecorder.resume()
   }
 
   private fun showToast(
