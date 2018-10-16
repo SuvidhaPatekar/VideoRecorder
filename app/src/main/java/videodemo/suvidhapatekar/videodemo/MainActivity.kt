@@ -24,13 +24,11 @@ import android.support.annotation.RequiresApi
 import android.support.v4.app.ActivityCompat
 import android.support.v4.content.ContextCompat
 import android.support.v7.app.AppCompatActivity
-import android.util.Log
 import android.util.Size
 import android.view.Surface
 import android.view.TextureView.SurfaceTextureListener
 import android.view.View
 import android.widget.Toast
-import kotlinx.android.synthetic.main.activity_main.toolbar
 import kotlinx.android.synthetic.main.content_main.btnPause
 import kotlinx.android.synthetic.main.content_main.btnRecordVideo
 import kotlinx.android.synthetic.main.content_main.txvCamera
@@ -104,7 +102,6 @@ class MainActivity : AppCompatActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     setContentView(R.layout.activity_main)
-    setSupportActionBar(toolbar)
     btnRecordVideo.setOnClickListener {
       if (isRecordingVideo) {
         stopRecordingVideo()
@@ -184,6 +181,12 @@ class MainActivity : AppCompatActivity() {
     }
   }
 
+  private fun startBackgroundThread() {
+    handlerThread = HandlerThread("background thread")
+    handlerThread?.start()
+    handler = Handler(handlerThread?.looper)
+  }
+
   @SuppressLint("MissingPermission")
   private fun setUpCamera() {
     cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
@@ -250,63 +253,17 @@ class MainActivity : AppCompatActivity() {
     }
   }
 
-  private fun closePreviewSession() {
-    if (cameraCaptureSession != null) {
-      cameraCaptureSession?.close()
-      cameraCaptureSession = null
+  private fun updatePreview() {
+    if (null == cameraDevice) {
+      return
     }
-  }
-
-  private fun closeOperations() {
     try {
-      cameraDevice?.close()
-      cameraDevice = null
-      closePreviewSession()
-      stopBackgroundThread()
+      val thread = HandlerThread("CameraPreview")
+      thread.start()
+      cameraCaptureSession?.setRepeatingRequest(request?.build(), null, handler)
     } catch (e: CameraAccessException) {
       e.printStackTrace()
     }
-  }
-
-  private fun startBackgroundThread() {
-    handlerThread = HandlerThread("background thread")
-    handlerThread?.start()
-    handler = Handler(handlerThread?.looper)
-  }
-
-  private fun stopBackgroundThread() {
-    handlerThread?.quitSafely()
-    try {
-      handlerThread?.join()
-      handlerThread = null
-      handler = null
-    } catch (e: InterruptedException) {
-      e.printStackTrace()
-    }
-
-  }
-
-  private fun setUpMediaRecorder() {
-    Log.d("setUpMediaRecorder", "Inside start recording video setUpMediaRecorder")
-    mediaRecorder.reset()
-    mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC)
-    mediaRecorder.setVideoSource(MediaRecorder.VideoSource.SURFACE)
-    mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-    if (videoPath == null) {
-      videoPath = getVideoFilePath()
-    }
-    mediaRecorder.setOutputFile(videoPath)
-    mediaRecorder.setVideoEncodingBitRate(10000000)
-    mediaRecorder.setVideoFrameRate(30)
-    mediaRecorder.setVideoSize(videoSize.width, videoSize.height)
-    mediaRecorder.setVideoEncoder(MediaRecorder.VideoEncoder.MPEG_4_SP)
-    mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-    mediaRecorder.prepare()
-  }
-
-  private fun getVideoFilePath(): String {
-    val file = createNewVideoFile()
-    return file.absolutePath
   }
 
   private fun startRecordingVideo() {
@@ -348,18 +305,26 @@ class MainActivity : AppCompatActivity() {
     }, handler)
   }
 
-  private fun updatePreview() {
-    if (null == cameraDevice) {
-      return
+  private fun setUpMediaRecorder() {
+    mediaRecorder.reset()
+    mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC)
+    mediaRecorder.setVideoSource(MediaRecorder.VideoSource.SURFACE)
+    mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+    if (videoPath == null) {
+      videoPath = getVideoFilePath()
     }
-    try {
-      val thread = HandlerThread("CameraPreview")
-      thread.start()
-      cameraCaptureSession?.setRepeatingRequest(request?.build(), null, handler)
-    } catch (e: CameraAccessException) {
-      e.printStackTrace()
-    }
+    mediaRecorder.setOutputFile(videoPath)
+    mediaRecorder.setVideoEncodingBitRate(10000000)
+    mediaRecorder.setVideoFrameRate(30)
+    mediaRecorder.setVideoSize(videoSize.width, videoSize.height)
+    mediaRecorder.setVideoEncoder(MediaRecorder.VideoEncoder.MPEG_4_SP)
+    mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+    mediaRecorder.prepare()
+  }
 
+  private fun getVideoFilePath(): String {
+    val file = createNewVideoFile()
+    return file.absolutePath
   }
 
   private fun stopRecordingVideo() {
@@ -388,6 +353,35 @@ class MainActivity : AppCompatActivity() {
   @RequiresApi(VERSION_CODES.N)
   private fun resumeRecordingVideo() {
     mediaRecorder.resume()
+  }
+
+  private fun closeOperations() {
+    try {
+      cameraDevice?.close()
+      cameraDevice = null
+      closePreviewSession()
+      stopBackgroundThread()
+    } catch (e: CameraAccessException) {
+      e.printStackTrace()
+    }
+  }
+
+  private fun closePreviewSession() {
+    if (cameraCaptureSession != null) {
+      cameraCaptureSession?.close()
+      cameraCaptureSession = null
+    }
+  }
+
+  private fun stopBackgroundThread() {
+    handlerThread?.quitSafely()
+    try {
+      handlerThread?.join()
+      handlerThread = null
+      handler = null
+    } catch (e: InterruptedException) {
+      e.printStackTrace()
+    }
   }
 
   private fun showToast(
