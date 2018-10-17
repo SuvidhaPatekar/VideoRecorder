@@ -12,6 +12,7 @@ import android.hardware.camera2.CameraCaptureSession.CaptureCallback
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
+import android.hardware.camera2.CaptureFailure
 import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.TotalCaptureResult
 import android.hardware.camera2.params.StreamConfigurationMap
@@ -24,6 +25,7 @@ import android.support.annotation.RequiresApi
 import android.support.v4.app.ActivityCompat
 import android.support.v4.content.ContextCompat
 import android.support.v7.app.AppCompatActivity
+import android.util.Log
 import android.util.Size
 import android.view.Surface
 import android.view.TextureView.SurfaceTextureListener
@@ -80,6 +82,7 @@ class MainActivity : AppCompatActivity() {
 
   private val cameraStateCallback = object : CameraDevice.StateCallback() {
     override fun onDisconnected(camera: CameraDevice) {
+      Log.d("Preview Surface", "onDisconnected")
       camera.close()
       cameraDevice = null
     }
@@ -88,11 +91,13 @@ class MainActivity : AppCompatActivity() {
       camera: CameraDevice,
       error: Int
     ) {
-      /*camera.close()
+      Log.d("Preview Surface", "onError")
+     /* camera.close()
       cameraDevice = null*/
     }
 
     override fun onOpened(camera: CameraDevice) {
+      Log.d("Preview Surface", "onOpened")
       cameraDevice = camera
       captureSurface()
     }
@@ -200,8 +205,8 @@ class MainActivity : AppCompatActivity() {
       if (cOrientation == CameraCharacteristics.LENS_FACING_BACK) {
         size = streamConfigs.getOutputSizes(ImageFormat.JPEG)[0]
         videoSize = streamConfigs.getOutputSizes(MediaRecorder::class.java)[0]
+        cameraManager.openCamera(id, cameraStateCallback, null)
       }
-      cameraManager.openCamera(id, cameraStateCallback, null)
     }
   }
 
@@ -216,41 +221,63 @@ class MainActivity : AppCompatActivity() {
   fun captureSurface() {
     closePreviewSession()
     previewSurface = Surface(txvCamera.surfaceTexture)
+    if (previewSurface != null) {
+      Log.d("Preview Surface", "Preview surface not null")
+      val surfaces = Arrays.asList(previewSurface!!)
+      if (surfaces.isNotEmpty()) {
+        Log.d("Preview Surface", "surfaces not empty")
 
-    val surfaces = Arrays.asList(previewSurface!!)
-    cameraDevice?.createCaptureSession(surfaces, object : CameraCaptureSession.StateCallback() {
-      override fun onConfigureFailed(session: CameraCaptureSession?) {
+        cameraDevice?.createCaptureSession(surfaces, object : CameraCaptureSession.StateCallback() {
+          override fun onConfigureFailed(session: CameraCaptureSession?) {
+            Log.d("Preview Surface", "on configured failed")
+          }
 
+          override fun onConfigured(session: CameraCaptureSession) {
+            if (cameraDevice == null) return
+            Log.d("Preview Surface", "on configured")
+            cameraCaptureSession = session
+            startSession()
+          }
+        }, handler)
+      } else {
+        Log.d("Preview Surface", "surfaces not empty")
       }
-
-      override fun onConfigured(session: CameraCaptureSession) {
-        if (cameraDevice == null) return
-        cameraCaptureSession = session
-        startSession()
-      }
-    }, handler)
+    } else {
+      Log.d("Preview Surface", "Preview surface null")
+    }
   }
 
   fun startSession() {
-    try {
-      cameraDevice?.let {
-        val request = it.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
-        request.addTarget(previewSurface)
-
-
-        cameraCaptureSession?.setRepeatingRequest(request.build(), object : CaptureCallback() {
+    //try {
+    cameraDevice?.let {
+      request = it.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
+      request?.addTarget(previewSurface)
+      if (null != request && null != cameraCaptureSession) {
+        Log.e("Preview Surface", "on request and session not null")
+        cameraCaptureSession?.setRepeatingRequest(request?.build(), object : CaptureCallback() {
           override fun onCaptureCompleted(
             session: CameraCaptureSession?,
             request: CaptureRequest?,
             result: TotalCaptureResult?
           ) {
+            Log.e("Preview Surface", "on capture completed")
+          }
 
+          override fun onCaptureFailed(
+            session: CameraCaptureSession?,
+            request: CaptureRequest?,
+            failure: CaptureFailure?
+          ) {
+            Log.e("Preview Surface", "on capture failed")
           }
         }, handler)
+      } else {
+        Log.e("Preview Surface", "on request and session null")
       }
-    } catch (e: Exception) {
-      e.printStackTrace()
     }
+//    } catch (e: Exception) {
+//      e.printStackTrace()
+//    }
   }
 
   private fun updatePreview() {
