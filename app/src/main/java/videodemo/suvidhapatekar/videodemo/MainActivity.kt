@@ -5,6 +5,8 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.ImageFormat
+import android.graphics.Matrix
+import android.graphics.RectF
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraAccessException
 import android.hardware.camera2.CameraCaptureSession
@@ -25,6 +27,7 @@ import android.support.v4.app.ActivityCompat
 import android.support.v4.content.ContextCompat
 import android.support.v7.app.AppCompatActivity
 import android.util.Size
+import android.util.SparseIntArray
 import android.view.Surface
 import android.view.TextureView.SurfaceTextureListener
 import android.view.View
@@ -34,9 +37,11 @@ import kotlinx.android.synthetic.main.content_main.btnRecordVideo
 import kotlinx.android.synthetic.main.content_main.txvCamera
 import java.util.Arrays
 
-class MainActivity : AppCompatActivity() {
+class MainActivity() : AppCompatActivity() {
 
   private val PERMISSIONS_REQUEST_CODE = 200
+  private val SENSOR_ORIENTATION_DEFAULT_DEGREES = 90
+  private val SENSOR_ORIENTATION_INVERSE_DEGREES = 270
 
   private var cameraDevice: CameraDevice? = null
   private var cameraCaptureSession: CameraCaptureSession? = null
@@ -53,6 +58,9 @@ class MainActivity : AppCompatActivity() {
   private var isRecordingVideo: Boolean = false
   private var isVideoPause: Boolean = false
   private var request: CaptureRequest.Builder? = null
+  private val DEFAULT_ORIENTATIONS = SparseIntArray()
+  private val INVERSE_ORIENTATIONS = SparseIntArray()
+  private var sensorOrientation: Int? = null
 
   private val surfaceTextureListener = object : SurfaceTextureListener {
     override fun onSurfaceTextureSizeChanged(
@@ -60,6 +68,7 @@ class MainActivity : AppCompatActivity() {
       width: Int,
       height: Int
     ) {
+      // configureTransform(width.toFloat(), height.toFloat())
     }
 
     override fun onSurfaceTextureUpdated(surface: SurfaceTexture?) {
@@ -94,8 +103,22 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOpened(camera: CameraDevice) {
       cameraDevice = camera
+      /*  if (txvCamera.isAvailable)
+          configureTransform(txvCamera.width.toFloat(), txvCamera.height.toFloat())*/
       captureSurface()
     }
+  }
+
+  init {
+    DEFAULT_ORIENTATIONS.append(Surface.ROTATION_0, 90)
+    DEFAULT_ORIENTATIONS.append(Surface.ROTATION_90, 0)
+    DEFAULT_ORIENTATIONS.append(Surface.ROTATION_180, 270)
+    DEFAULT_ORIENTATIONS.append(Surface.ROTATION_270, 180)
+
+    INVERSE_ORIENTATIONS.append(Surface.ROTATION_0, 270)
+    INVERSE_ORIENTATIONS.append(Surface.ROTATION_90, 180)
+    INVERSE_ORIENTATIONS.append(Surface.ROTATION_180, 90)
+    INVERSE_ORIENTATIONS.append(Surface.ROTATION_270, 0)
   }
 
   @RequiresApi(VERSION_CODES.N)
@@ -103,22 +126,21 @@ class MainActivity : AppCompatActivity() {
     super.onCreate(savedInstanceState)
     setContentView(R.layout.activity_main)
     btnRecordVideo.setOnClickListener {
-      if (isRecordingVideo) {
-        stopRecordingVideo()
-      } else {
-        startRecordingVideo()
+      when {
+        isRecordingVideo -> stopRecordingVideo()
+        else -> startRecordingVideo()
       }
     }
 
     btnPause.setOnClickListener {
-      if (!isVideoPause) {
+      isVideoPause = if (!isVideoPause) {
         pauseRecordingVideo()
         btnPause.setText(R.string.resume)
-        isVideoPause = !isVideoPause
+        !isVideoPause
       } else {
         resumeRecordingVideo()
         btnPause.setText(R.string.pause)
-        isVideoPause = !isVideoPause
+        !isVideoPause
       }
     }
   }
@@ -190,9 +212,9 @@ class MainActivity : AppCompatActivity() {
   @SuppressLint("MissingPermission")
   private fun setUpCamera() {
     cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
-    mediaRecorder = MediaRecorder()
     for (id in cameraManager.cameraIdList) {
       cameraCharacteristics = cameraManager.getCameraCharacteristics(id)
+      mediaRecorder = MediaRecorder()
       val cOrientation = cameraCharacteristics.get(CameraCharacteristics.LENS_FACING)
       val streamConfigs: StreamConfigurationMap =
         cameraCharacteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
@@ -201,6 +223,10 @@ class MainActivity : AppCompatActivity() {
         size = streamConfigs.getOutputSizes(ImageFormat.JPEG)[0]
         videoSize = streamConfigs.getOutputSizes(MediaRecorder::class.java)[0]
       }
+      sensorOrientation = cameraCharacteristics.get(CameraCharacteristics.SENSOR_ORIENTATION)
+      /* if (txvCamera.isAvailable)
+         configureTransform(txvCamera.width.toFloat(), txvCamera.height.toFloat())*/
+
       cameraManager.openCamera(id, cameraStateCallback, null)
     }
   }
@@ -216,7 +242,6 @@ class MainActivity : AppCompatActivity() {
   fun captureSurface() {
     closePreviewSession()
     previewSurface = Surface(txvCamera.surfaceTexture)
-
     val surfaces = Arrays.asList(previewSurface!!)
     cameraDevice?.createCaptureSession(surfaces, object : CameraCaptureSession.StateCallback() {
       override fun onConfigureFailed(session: CameraCaptureSession?) {
@@ -319,7 +344,41 @@ class MainActivity : AppCompatActivity() {
     mediaRecorder.setVideoSize(videoSize.width, videoSize.height)
     mediaRecorder.setVideoEncoder(MediaRecorder.VideoEncoder.MPEG_4_SP)
     mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+    val rotation = windowManager.defaultDisplay.rotation
+
+    when (sensorOrientation) {
+      SENSOR_ORIENTATION_DEFAULT_DEGREES ->
+        mediaRecorder.setOrientationHint(DEFAULT_ORIENTATIONS.get(rotation))
+
+      SENSOR_ORIENTATION_INVERSE_DEGREES ->
+        mediaRecorder.setOrientationHint(INVERSE_ORIENTATIONS.get(rotation))
+    }
+
     mediaRecorder.prepare()
+  }
+
+  private fun configureTransform(
+    viewWidth: Float,
+    viewHeight: Float
+  ) {
+
+    val rotation = windowManager.defaultDisplay.rotation
+    val matrix = Matrix()
+    val viewRect = RectF(0F, 0F, viewWidth, viewHeight)
+    val bufferRect = RectF(0F, 0F, size.height.toFloat(), size.width.toFloat())
+    val centerX = viewRect.centerX()
+    val centerY = viewRect.centerY()
+    if (Surface.ROTATION_90 == rotation || Surface.ROTATION_270 == rotation) {
+      bufferRect.offset(centerX - bufferRect.centerX(), centerY - bufferRect.centerY());
+      matrix.setRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.FILL);
+      val scale = Math.max(
+          viewHeight / size.height,
+          viewWidth / size.width
+      )
+      matrix.postScale(scale, scale, centerX, centerY);
+      matrix.postRotate((90 * (rotation - 2)).toFloat(), centerX, centerY);
+    }
+    txvCamera.setTransform(matrix)
   }
 
   private fun getVideoFilePath(): String {
@@ -329,7 +388,7 @@ class MainActivity : AppCompatActivity() {
 
   private fun stopRecordingVideo() {
     // UI
-    isRecordingVideo = false
+    isRecordingVideo = !isRecordingVideo
 
     // Stop recording
     try {
@@ -367,10 +426,8 @@ class MainActivity : AppCompatActivity() {
   }
 
   private fun closePreviewSession() {
-    if (cameraCaptureSession != null) {
-      cameraCaptureSession?.close()
-      cameraCaptureSession = null
-    }
+    cameraCaptureSession?.close()
+    cameraCaptureSession = null
   }
 
   private fun stopBackgroundThread() {
