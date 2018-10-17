@@ -4,7 +4,6 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
-import android.graphics.ImageFormat
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraAccessException
 import android.hardware.camera2.CameraCaptureSession
@@ -34,7 +33,9 @@ import android.widget.Toast
 import kotlinx.android.synthetic.main.content_main.btnPause
 import kotlinx.android.synthetic.main.content_main.btnRecordVideo
 import kotlinx.android.synthetic.main.content_main.txvCamera
+import java.lang.Long.signum
 import java.util.Arrays
+import java.util.Collections
 
 class MainActivity : AppCompatActivity() {
 
@@ -76,7 +77,7 @@ class MainActivity : AppCompatActivity() {
       width: Int,
       height: Int
     ) {
-      setUpCamera()
+      setUpCamera(width, height)
     }
   }
 
@@ -92,8 +93,8 @@ class MainActivity : AppCompatActivity() {
       error: Int
     ) {
       Log.d("Preview Surface", "onError")
-     /* camera.close()
-      cameraDevice = null*/
+      /* camera.close()
+       cameraDevice = null*/
     }
 
     override fun onOpened(camera: CameraDevice) {
@@ -193,26 +194,35 @@ class MainActivity : AppCompatActivity() {
   }
 
   @SuppressLint("MissingPermission")
-  private fun setUpCamera() {
+  private fun setUpCamera(
+    width: Int,
+    height: Int
+  ) {
     cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
     mediaRecorder = MediaRecorder()
-    for (id in cameraManager.cameraIdList) {
-      cameraCharacteristics = cameraManager.getCameraCharacteristics(id)
-      val cOrientation = cameraCharacteristics.get(CameraCharacteristics.LENS_FACING)
-      val streamConfigs: StreamConfigurationMap =
-        cameraCharacteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
 
-      if (cOrientation == CameraCharacteristics.LENS_FACING_BACK) {
-        size = streamConfigs.getOutputSizes(ImageFormat.JPEG)[0]
-        videoSize = streamConfigs.getOutputSizes(MediaRecorder::class.java)[0]
-        cameraManager.openCamera(id, cameraStateCallback, null)
-      }
-    }
+    val cameraId = cameraManager.cameraIdList[0]
+    cameraCharacteristics = cameraManager.getCameraCharacteristics(cameraId)
+
+//    val cOrientation = cameraCharacteristics.get(CameraCharacteristics.LENS_FACING)
+    val streamConfigs: StreamConfigurationMap =
+      cameraCharacteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+
+    // streamConfigs.getOutputSizes(ImageFormat.JPEG)[1]
+
+    videoSize = chooseVideoSize(streamConfigs.getOutputSizes(MediaRecorder::class.java))
+
+    size = chooseOptimalSize(
+        streamConfigs.getOutputSizes(SurfaceTexture::class.java),
+        width, height, videoSize
+    )
+    //streamConfigs.getOutputSizes(MediaRecorder::class.java)[0]
+    cameraManager.openCamera(cameraId, cameraStateCallback, null)
   }
 
   private fun startCamera() {
     if (txvCamera.isAvailable) {
-      setUpCamera()
+      setUpCamera(txvCamera.width, txvCamera.height)
     } else {
       txvCamera.surfaceTextureListener = surfaceTextureListener
     }
@@ -246,6 +256,32 @@ class MainActivity : AppCompatActivity() {
       Log.d("Preview Surface", "Preview surface null")
     }
   }
+
+  private fun chooseOptimalSize(
+    choices: Array<Size>,
+    width: Int,
+    height: Int,
+    aspectRatio: Size
+  ): Size {
+
+    // Collect the supported resolutions that are at least as big as the preview Surface
+    val w = aspectRatio.width
+    val h = aspectRatio.height
+    val bigEnough = choices.filter {
+      it.height == it.width * h / w && it.width >= width && it.height >= height
+    }
+
+    // Pick the smallest of those, assuming we found any
+    return if (bigEnough.isNotEmpty()) {
+      Collections.min(bigEnough, CompareSizesByArea())
+    } else {
+      choices[0]
+    }
+  }
+
+  private fun chooseVideoSize(choices: Array<Size>) = choices.firstOrNull {
+    it.width == it.height * 4 / 3 && it.width <= 1080
+  } ?: choices[choices.size - 1]
 
   fun startSession() {
     //try {
@@ -336,7 +372,7 @@ class MainActivity : AppCompatActivity() {
     mediaRecorder.reset()
     mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC)
     mediaRecorder.setVideoSource(MediaRecorder.VideoSource.SURFACE)
-    mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+    mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP)
     if (videoPath == null) {
       videoPath = getVideoFilePath()
     }
@@ -420,5 +456,15 @@ class MainActivity : AppCompatActivity() {
       )
           .show()
     }
+  }
+
+  inner class CompareSizesByArea : Comparator<Size> {
+
+    // We cast here to ensure the multiplications won't overflow
+    override fun compare(
+      lhs: Size,
+      rhs: Size
+    ) =
+      signum(lhs.width.toLong() * lhs.height - rhs.width.toLong() * rhs.height)
   }
 }
