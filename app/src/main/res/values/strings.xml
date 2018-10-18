@@ -1,5 +1,5 @@
 <resources>
-  <string name="app_name">VideoDemo</string>
+  <string name="app_name">Video Demo</string>
   <string name="action_settings">Settings</string>
   <string name="need_permission">Permission Denied. Need permission to access the functionality</string>
   <string name="stop">stop</string>
