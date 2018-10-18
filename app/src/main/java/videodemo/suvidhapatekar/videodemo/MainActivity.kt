@@ -5,16 +5,9 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.SurfaceTexture
-import android.hardware.camera2.CameraAccessException
-import android.hardware.camera2.CameraCaptureSession
+import android.hardware.camera2.*
 import android.hardware.camera2.CameraCaptureSession.CaptureCallback
-import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraCharacteristics.SENSOR_ORIENTATION
-import android.hardware.camera2.CameraDevice
-import android.hardware.camera2.CameraManager
-import android.hardware.camera2.CaptureFailure
-import android.hardware.camera2.CaptureRequest
-import android.hardware.camera2.TotalCaptureResult
 import android.hardware.camera2.params.StreamConfigurationMap
 import android.media.MediaRecorder
 import android.os.Build.VERSION_CODES
@@ -28,17 +21,14 @@ import android.support.v7.app.AppCompatActivity
 import android.util.Log
 import android.util.Size
 import android.util.SparseIntArray
+import android.view.MotionEvent
 import android.view.Surface
 import android.view.TextureView.SurfaceTextureListener
 import android.view.View
 import android.widget.Toast
-import kotlinx.android.synthetic.main.content_main.btnPause
-import kotlinx.android.synthetic.main.content_main.btnRecordVideo
-import kotlinx.android.synthetic.main.content_main.txvCamera
+import kotlinx.android.synthetic.main.content_main.*
 import java.lang.Long.signum
-import java.util.Arrays
-import java.util.Collections
-import java.util.Comparator
+import java.util.*
 
 class MainActivity : AppCompatActivity() {
 
@@ -136,15 +126,32 @@ class MainActivity : AppCompatActivity() {
     }
 
     btnPause.setOnClickListener {
-      if (!isVideoPause) {
+      isVideoPause = if (!isVideoPause) {
         pauseRecordingVideo()
         btnPause.setText(R.string.resume)
-        isVideoPause = !isVideoPause
+        !isVideoPause
       } else {
         resumeRecordingVideo()
         btnPause.setText(R.string.pause)
-        isVideoPause = !isVideoPause
+        !isVideoPause
       }
+    }
+
+    txvCamera.setOnTouchListener { v, event ->
+      if (event?.action == MotionEvent.ACTION_DOWN) {
+        if (isRecordingVideo) {
+          pauseRecordingVideo()
+          btnPause.setText(R.string.resume)
+          isVideoPause = true
+        }
+      } else if (event?.action == MotionEvent.ACTION_UP) {
+        if (isVideoPause) {
+          resumeRecordingVideo()
+          btnPause.setText(R.string.resume)
+          isVideoPause = false
+        }
+      }
+      false
     }
   }
 
@@ -192,7 +199,10 @@ class MainActivity : AppCompatActivity() {
     when (requestCode) {
       PERMISSIONS_REQUEST_CODE -> {
         if ((grantResults.isNotEmpty())) {
-          if (grantResults[0] == PackageManager.PERMISSION_GRANTED && grantResults[1] == PackageManager.PERMISSION_GRANTED && grantResults[2] == PackageManager.PERMISSION_GRANTED) {
+          if (grantResults[0] == PackageManager.PERMISSION_GRANTED &&
+              grantResults[1] == PackageManager.PERMISSION_GRANTED &&
+              grantResults[2] == PackageManager.PERMISSION_GRANTED
+          ) {
             startCamera()
           } else {
             showToast(R.string.need_permission)
@@ -255,7 +265,8 @@ class MainActivity : AppCompatActivity() {
       if (surfaces.isNotEmpty()) {
         Log.d("Preview Surface", "surfaces not empty")
 
-        cameraDevice?.createCaptureSession(surfaces, object : CameraCaptureSession.StateCallback() {
+        cameraDevice?.createCaptureSession(
+            surfaces, object : CameraCaptureSession.StateCallback() {
           override fun onConfigureFailed(session: CameraCaptureSession?) {
             Log.d("Preview Surface", "on configured failed")
           }
@@ -266,7 +277,8 @@ class MainActivity : AppCompatActivity() {
             cameraCaptureSession = session
             startSession()
           }
-        }, handler)
+        }, handler
+        )
       } else {
         Log.d("Preview Surface", "surfaces not empty")
       }
@@ -392,13 +404,13 @@ class MainActivity : AppCompatActivity() {
     val rotation = windowManager.defaultDisplay.rotation
     when (sensorOrientation) {
       SENSOR_ORIENTATION_DEFAULT_DEGREES ->
-        mediaRecorder?.setOrientationHint(DEFAULT_ORIENTATIONS.get(rotation))
+        mediaRecorder.setOrientationHint(DEFAULT_ORIENTATIONS.get(rotation))
       SENSOR_ORIENTATION_INVERSE_DEGREES ->
-        mediaRecorder?.setOrientationHint(INVERSE_ORIENTATIONS.get(rotation))
+        mediaRecorder.setOrientationHint(INVERSE_ORIENTATIONS.get(rotation))
     }
 
-    mediaRecorder?.apply {
-      setAudioSource(MediaRecorder.AudioSource.MIC)
+    mediaRecorder.apply {
+      setAudioSource(MediaRecorder.AudioSource.REMOTE_SUBMIX)
       setVideoSource(MediaRecorder.VideoSource.SURFACE)
       setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
       if (videoPath == null) {
@@ -422,7 +434,8 @@ class MainActivity : AppCompatActivity() {
   private fun stopRecordingVideo() {
     isRecordingVideo = false
     btnRecordVideo.setText(R.string.start)
-    mediaRecorder?.apply {
+    btnPause.visibility = View.GONE
+    mediaRecorder.apply {
       stop()
       reset()
     }
