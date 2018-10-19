@@ -1,4 +1,4 @@
-package videodemo.suvidhapatekar.videodemo
+package com.suvidhap.videodemo
 
 import android.Manifest
 import android.annotation.SuppressLint

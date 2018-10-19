@@ -1,4 +1,4 @@
-package videodemo.suvidhapatekar.videodemo
+package com.suvidhap.videodemo
 
 import android.os.Environment
 import java.io.File
