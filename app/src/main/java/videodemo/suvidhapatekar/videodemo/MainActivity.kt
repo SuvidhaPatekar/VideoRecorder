@@ -208,7 +208,7 @@ class MainActivity : AppCompatActivity() {
                     ) {
                         startCamera()
                     } else {
-                        showToast(R.string.need_permission)
+                        showToast(R.string.need_permission, null)
                         getPermission()
                     }
                 } else {
@@ -405,7 +405,6 @@ class MainActivity : AppCompatActivity() {
         }, handler)
     }
 
-
     private fun setUpMediaRecorder() {
         mediaRecorder.reset()
 
@@ -418,7 +417,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         mediaRecorder.apply {
-            setAudioSource(MediaRecorder.AudioSource.MIC)
+            setAudioSource(MediaRecorder.AudioSource.CAMCORDER)
             setVideoSource(MediaRecorder.VideoSource.SURFACE)
             setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             if (videoPath == null) {
@@ -434,12 +433,15 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    fun setUpMediaPlayer() {
+    private fun setUpMediaPlayer() {
         try {
             val afd = assets.openFd("watersound.mp3")
-            mediaPlayer.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
-            mediaPlayer.prepare()
-            mediaPlayer.start()
+            mediaPlayer.apply {
+                setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+                isLooping = true
+                prepare()
+                start()
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -460,7 +462,10 @@ class MainActivity : AppCompatActivity() {
             reset()
         }
 
-        mediaPlayer.stop()
+        if (mediaPlayer.isPlaying)
+            mediaPlayer.stop()
+
+        showToast(null, "Video file saved at $videoPath")
 
         videoPath = null
         startCamera()
@@ -469,7 +474,9 @@ class MainActivity : AppCompatActivity() {
     @RequiresApi(VERSION_CODES.N)
     private fun pauseRecordingVideo() {
         mediaRecorder.pause()
-        mediaPlayer.stop()
+
+        if (mediaPlayer.isPlaying)
+            mediaPlayer.pause()
     }
 
     @RequiresApi(VERSION_CODES.N)
@@ -510,9 +517,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showToast(
-        message: Int?
+        message: Int?,
+        messageString: String?
     ) {
         message?.let {
+            Toast.makeText(
+                this, it, Toast.LENGTH_SHORT
+            )
+                .show()
+        }
+
+        messageString?.let {
             Toast.makeText(
                 this, it, Toast.LENGTH_SHORT
             )
