@@ -239,7 +239,6 @@ class MainActivity : AppCompatActivity() {
         streamConfigs.getOutputSizes(SurfaceTexture::class.java),
         width, height, videoSize
     )
-    //streamConfigs.getOutputSizes(MediaRecorder::class.java)[0]
     cameraManager.openCamera(cameraId, cameraStateCallback, null)
   }
 
@@ -390,8 +389,6 @@ class MainActivity : AppCompatActivity() {
         videoPath = getVideoFilePath()
       }
       setOutputFile(videoPath)
-      setVideoEncodingBitRate(10000000)
-      setVideoFrameRate(30)
       setVideoSize(videoSize.width, videoSize.height)
       setVideoEncoder(MediaRecorder.VideoEncoder.MPEG_4_SP)
       prepare()
@@ -479,7 +476,7 @@ class MainActivity : AppCompatActivity() {
   private fun addAudioToVideo(
     videoPath: String
   ) {
-    var outputFile: String = getVideoFilePath()
+    val outputFile: String = getVideoFilePath()
 
     try {
       val videoExtractor = MediaExtractor()

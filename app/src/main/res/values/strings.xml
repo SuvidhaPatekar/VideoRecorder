@@ -6,8 +6,5 @@
   <string name="start">start</string>
   <string name="resume">RESUME</string>
   <string name="pause">PAUSE</string>
-  <string name="audio">watersound.mp3</string>
-  <string name="audio_aac">watersound.aac</string>
-
-
+  <string name="audio_aac">audio.aac</string>
 </resources>
