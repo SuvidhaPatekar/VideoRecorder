@@ -19,11 +19,9 @@ import android.media.MediaExtractor
 import android.media.MediaMuxer
 import android.media.MediaMuxer.OutputFormat
 import android.media.MediaRecorder
-import android.os.Build.VERSION_CODES
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
-import android.support.annotation.RequiresApi
 import android.support.v4.app.ActivityCompat
 import android.support.v4.content.ContextCompat
 import android.support.v7.app.AppCompatActivity
@@ -122,7 +120,6 @@ class MainActivity : AppCompatActivity() {
     }
   }
 
-  @RequiresApi(VERSION_CODES.N)
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     setContentView(R.layout.activity_main)
@@ -150,7 +147,7 @@ class MainActivity : AppCompatActivity() {
   override fun onStart() {
     super.onStart()
     startBackgroundThread()
-    getPermission()
+    startCameraIfAllowed()
   }
 
   override fun onStop() {
@@ -158,22 +155,18 @@ class MainActivity : AppCompatActivity() {
     closeOperations()
   }
 
-  private fun getPermission() {
+  private fun startCameraIfAllowed() {
     if (ContextCompat.checkSelfPermission(
             this, Manifest.permission.CAMERA
         ) != PackageManager.PERMISSION_GRANTED ||
         ContextCompat.checkSelfPermission(
             this, Manifest.permission.WRITE_EXTERNAL_STORAGE
-        ) != PackageManager.PERMISSION_GRANTED ||
-        ContextCompat.checkSelfPermission(
-            this, Manifest.permission.RECORD_AUDIO
         ) != PackageManager.PERMISSION_GRANTED
     ) {
       ActivityCompat.requestPermissions(
           this,
           arrayOf(
-              Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE,
-              Manifest.permission.RECORD_AUDIO
+              Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE
           ),
           PERMISSIONS_REQUEST_CODE
       )
@@ -192,16 +185,13 @@ class MainActivity : AppCompatActivity() {
       PERMISSIONS_REQUEST_CODE -> {
         if ((grantResults.isNotEmpty())) {
           if (grantResults[0] == PackageManager.PERMISSION_GRANTED &&
-              grantResults[1] == PackageManager.PERMISSION_GRANTED &&
-              grantResults[2] == PackageManager.PERMISSION_GRANTED
+              grantResults[1] == PackageManager.PERMISSION_GRANTED
           ) {
             startCamera()
           } else {
             showToast(R.string.need_permission)
-            getPermission()
+            startCameraIfAllowed()
           }
-        } else {
-
         }
         return
       }
@@ -325,7 +315,6 @@ class MainActivity : AppCompatActivity() {
 
     request = cameraDevice?.createCaptureRequest(CameraDevice.TEMPLATE_RECORD)
 
-    // Set up Surface for the camera preview
     // Set up Surface for the MediaRecorder
     recorderSurface = mediaRecorder.surface
     val surfaces = Arrays.asList(previewSurface, recorderSurface)
@@ -334,14 +323,13 @@ class MainActivity : AppCompatActivity() {
 
     // Start a capture session
     // Once the session starts, we can update the UI and start recording
-
     cameraDevice?.createCaptureSession(surfaces, object : CameraCaptureSession.StateCallback() {
       override fun onConfigured(session: CameraCaptureSession?) {
         cameraCaptureSession = session
         updatePreview()
 
         runOnUiThread {
-          isRecordingVideo = !isRecordingVideo
+          isRecordingVideo = true
           btnRecordVideo.setText(R.string.stop)
           btnPause.setText(R.string.pause)
           btnPause.visibility = View.VISIBLE
@@ -395,12 +383,10 @@ class MainActivity : AppCompatActivity() {
     startCamera()
   }
 
-  @RequiresApi(VERSION_CODES.N)
   private fun pauseRecordingVideo() {
     mediaRecorder.pause()
   }
 
-  @RequiresApi(VERSION_CODES.N)
   private fun resumeRecordingVideo() {
     mediaRecorder.resume()
   }
@@ -519,25 +505,18 @@ class MainActivity : AppCompatActivity() {
     }
   }
 
-  private fun showToast(
-    message: Int?
-
-  ) {
-    message?.let {
-      Toast.makeText(
-          this, it, Toast.LENGTH_SHORT
-      )
-          .show()
-    }
+  private fun showToast(message: Int) {
+    Toast.makeText(
+        this, message, Toast.LENGTH_SHORT
+    )
+        .show()
   }
 
-  private fun showToast(message: String?) {
-    message?.let {
-      Toast.makeText(
-          this, it, Toast.LENGTH_SHORT
-      )
-          .show()
-    }
+  private fun showToast(message: String) {
+    Toast.makeText(
+        this, message, Toast.LENGTH_SHORT
+    )
+        .show()
   }
 
   inner class CompareSizesByArea : Comparator<Size> {
