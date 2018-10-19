@@ -20,7 +20,6 @@ import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaMuxer
 import android.media.MediaMuxer.OutputFormat
-import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.os.Build.VERSION_CODES
 import android.os.Bundle
@@ -39,7 +38,6 @@ import android.widget.Toast
 import kotlinx.android.synthetic.main.content_main.btnPause
 import kotlinx.android.synthetic.main.content_main.btnRecordVideo
 import kotlinx.android.synthetic.main.content_main.txvCamera
-import videodemo.suvidhapatekar.videodemo.R.string
 import java.io.File
 import java.lang.Long.signum
 import java.nio.ByteBuffer
@@ -62,8 +60,6 @@ class MainActivity : AppCompatActivity() {
   private var handler: Handler? = null
   private var handlerThread: HandlerThread? = null
   private lateinit var mediaRecorder: MediaRecorder
-  private lateinit var mediaPlayer: MediaPlayer
-
   private var videoPath: String? = null
   private var isRecordingVideo: Boolean = false
   private var isVideoPause: Boolean = false
@@ -228,7 +224,6 @@ class MainActivity : AppCompatActivity() {
   ) {
     cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
     mediaRecorder = MediaRecorder()
-    mediaPlayer = MediaPlayer()
 
     val cameraId = cameraManager.cameraIdList[0]
     cameraCharacteristics = cameraManager.getCameraCharacteristics(cameraId)
@@ -356,8 +351,6 @@ class MainActivity : AppCompatActivity() {
     // Start a capture session
     // Once the session starts, we can update the UI and start recording
 
-    setUpMediaPlayer()
-
     cameraDevice?.createCaptureSession(surfaces, object : CameraCaptureSession.StateCallback() {
       override fun onConfigured(session: CameraCaptureSession?) {
         cameraCaptureSession = session
@@ -405,21 +398,6 @@ class MainActivity : AppCompatActivity() {
     }
   }
 
-  private fun setUpMediaPlayer() {
-    try {
-      val afd = assets.openFd(getString(string.audio))
-      mediaPlayer.apply {
-        setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
-        isLooping = true
-        prepare()
-        start()
-      }
-    } catch (e: Exception) {
-      e.printStackTrace()
-    }
-
-  }
-
   private fun getVideoFilePath(): String {
     val file = createNewVideoFile()
     return file.absolutePath
@@ -434,9 +412,6 @@ class MainActivity : AppCompatActivity() {
       reset()
     }
 
-    if (mediaPlayer.isPlaying)
-      mediaPlayer.stop()
-
     addAudioToVideo(videoPath!!)
     videoPath = null
     startCamera()
@@ -445,15 +420,11 @@ class MainActivity : AppCompatActivity() {
   @RequiresApi(VERSION_CODES.N)
   private fun pauseRecordingVideo() {
     mediaRecorder.pause()
-
-    if (mediaPlayer.isPlaying)
-      mediaPlayer.pause()
   }
 
   @RequiresApi(VERSION_CODES.N)
   private fun resumeRecordingVideo() {
     mediaRecorder.resume()
-    mediaPlayer.start()
   }
 
   private fun closeOperations() {
@@ -463,7 +434,6 @@ class MainActivity : AppCompatActivity() {
       closePreviewSession()
       stopBackgroundThread()
       mediaRecorder.release()
-      mediaPlayer.release()
     } catch (e: CameraAccessException) {
       e.printStackTrace()
     }
@@ -553,8 +523,8 @@ class MainActivity : AppCompatActivity() {
           sawEOS = true
           videoBufferInfo.size = 0
         } else {
-          videoBufferInfo.presentationTimeUs = videoExtractor.getSampleTime()
-          videoBufferInfo.flags = videoExtractor.getSampleFlags()
+          videoBufferInfo.presentationTimeUs = videoExtractor.sampleTime
+          videoBufferInfo.flags = videoExtractor.sampleFlags
           muxer.writeSampleData(videoTrack, videoBuf, videoBufferInfo)
           videoExtractor.advance()
         }
