@@ -16,6 +16,10 @@ import android.hardware.camera2.CaptureFailure
 import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.TotalCaptureResult
 import android.hardware.camera2.params.StreamConfigurationMap
+import android.media.MediaCodec
+import android.media.MediaExtractor
+import android.media.MediaMuxer
+import android.media.MediaMuxer.OutputFormat
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.os.Build.VERSION_CODES
@@ -36,7 +40,9 @@ import kotlinx.android.synthetic.main.content_main.btnPause
 import kotlinx.android.synthetic.main.content_main.btnRecordVideo
 import kotlinx.android.synthetic.main.content_main.txvCamera
 import videodemo.suvidhapatekar.videodemo.R.string
+import java.io.File
 import java.lang.Long.signum
+import java.nio.ByteBuffer
 import java.util.Arrays
 import java.util.Collections
 import java.util.Comparator
@@ -385,7 +391,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     mediaRecorder.apply {
-      setAudioSource(MediaRecorder.AudioSource.CAMCORDER)
       setVideoSource(MediaRecorder.VideoSource.SURFACE)
       setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
       if (videoPath == null) {
@@ -396,7 +401,6 @@ class MainActivity : AppCompatActivity() {
       setVideoFrameRate(30)
       setVideoSize(videoSize.width, videoSize.height)
       setVideoEncoder(MediaRecorder.VideoEncoder.MPEG_4_SP)
-      setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
       prepare()
     }
   }
@@ -433,8 +437,7 @@ class MainActivity : AppCompatActivity() {
     if (mediaPlayer.isPlaying)
       mediaPlayer.stop()
 
-    showToast(null, "Video file saved at $videoPath")
-
+    addAudioToVideo(videoPath!!)
     videoPath = null
     startCamera()
   }
@@ -500,6 +503,90 @@ class MainActivity : AppCompatActivity() {
           this, it, Toast.LENGTH_SHORT
       )
           .show()
+    }
+  }
+
+  private fun addAudioToVideo(
+    videoPath: String
+  ) {
+    var outputFile: String = getVideoFilePath()
+
+    try {
+      val videoExtractor = MediaExtractor()
+      videoExtractor.setDataSource(videoPath)
+
+      val afd = assets.openFd(getString(R.string.audio_aac))
+
+      val audioExtractor = MediaExtractor()
+      audioExtractor.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+
+      val muxer = MediaMuxer(outputFile, OutputFormat.MUXER_OUTPUT_MPEG_4)
+
+      videoExtractor.selectTrack(0)
+      val videoFormat = videoExtractor.getTrackFormat(0)
+      val videoTrack = muxer.addTrack(videoFormat)
+
+      audioExtractor.selectTrack(0)
+      val audioFormat = audioExtractor.getTrackFormat(0)
+      val audioTrack = muxer.addTrack(audioFormat)
+
+      var sawEOS = false
+      val offset = 100
+      val sampleSize = 256 * 1024
+      val videoBuf = ByteBuffer.allocate(sampleSize)
+      val audioBuf = ByteBuffer.allocate(sampleSize)
+      val videoBufferInfo = MediaCodec.BufferInfo()
+      val audioBufferInfo = MediaCodec.BufferInfo()
+
+
+      videoExtractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
+      audioExtractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
+
+      muxer.start()
+
+      while (!sawEOS) {
+        videoBufferInfo.offset = offset
+        videoBufferInfo.size = videoExtractor.readSampleData(videoBuf, offset)
+
+
+        if (videoBufferInfo.size < 0 || audioBufferInfo.size < 0) {
+          sawEOS = true
+          videoBufferInfo.size = 0
+        } else {
+          videoBufferInfo.presentationTimeUs = videoExtractor.getSampleTime()
+          videoBufferInfo.flags = videoExtractor.getSampleFlags()
+          muxer.writeSampleData(videoTrack, videoBuf, videoBufferInfo)
+          videoExtractor.advance()
+        }
+      }
+
+      var sawEOS2 = false
+      while (!sawEOS2) {
+        audioBufferInfo.offset = offset
+        audioBufferInfo.size = audioExtractor.readSampleData(audioBuf, offset)
+
+        if (videoBufferInfo.size < 0 || audioBufferInfo.size < 0) {
+          sawEOS2 = true
+          audioBufferInfo.size = 0
+        } else {
+          audioBufferInfo.presentationTimeUs = audioExtractor.sampleTime
+          audioBufferInfo.flags = audioExtractor.sampleFlags
+          muxer.writeSampleData(audioTrack, audioBuf, audioBufferInfo)
+          audioExtractor.advance()
+        }
+      }
+
+      muxer.stop()
+      muxer.release()
+      showToast(null, "Video file saved at $outputFile")
+
+      val file = File(videoPath)
+      if (file.exists()) {
+        file.delete()
+      }
+
+    } catch (e: Exception) {
+      e.printStackTrace()
     }
   }
 
