@@ -12,9 +12,7 @@ import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraCharacteristics.SENSOR_ORIENTATION
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
-import android.hardware.camera2.CaptureFailure
 import android.hardware.camera2.CaptureRequest
-import android.hardware.camera2.TotalCaptureResult
 import android.hardware.camera2.params.StreamConfigurationMap
 import android.media.MediaCodec
 import android.media.MediaExtractor
@@ -47,8 +45,6 @@ import java.util.Comparator
 
 class MainActivity : AppCompatActivity() {
 
-  private val PERMISSIONS_REQUEST_CODE = 200
-
   private var cameraDevice: CameraDevice? = null
   private var cameraCaptureSession: CameraCaptureSession? = null
   private lateinit var cameraCharacteristics: CameraCharacteristics
@@ -64,6 +60,23 @@ class MainActivity : AppCompatActivity() {
   private var isRecordingVideo: Boolean = false
   private var isVideoPause: Boolean = false
   private var request: CaptureRequest.Builder? = null
+  private var sensorOrientation = 0
+  private val SENSOR_ORIENTATION_DEFAULT_DEGREES = 90
+  private val SENSOR_ORIENTATION_INVERSE_DEGREES = 270
+  private val PERMISSIONS_REQUEST_CODE = 200
+
+  private val DEFAULT_ORIENTATIONS = SparseIntArray().apply {
+    append(Surface.ROTATION_0, 90)
+    append(Surface.ROTATION_90, 0)
+    append(Surface.ROTATION_180, 270)
+    append(Surface.ROTATION_270, 180)
+  }
+  private val INVERSE_ORIENTATIONS = SparseIntArray().apply {
+    append(Surface.ROTATION_0, 270)
+    append(Surface.ROTATION_90, 180)
+    append(Surface.ROTATION_180, 90)
+    append(Surface.ROTATION_270, 0)
+  }
 
   private val surfaceTextureListener = object : SurfaceTextureListener {
     override fun onSurfaceTextureSizeChanged(
@@ -107,22 +120,6 @@ class MainActivity : AppCompatActivity() {
       cameraDevice = camera
       captureSurface()
     }
-  }
-  private var sensorOrientation = 0
-  private val SENSOR_ORIENTATION_DEFAULT_DEGREES = 90
-  private val SENSOR_ORIENTATION_INVERSE_DEGREES = 270
-
-  private val DEFAULT_ORIENTATIONS = SparseIntArray().apply {
-    append(Surface.ROTATION_0, 90)
-    append(Surface.ROTATION_90, 0)
-    append(Surface.ROTATION_180, 270)
-    append(Surface.ROTATION_270, 180)
-  }
-  private val INVERSE_ORIENTATIONS = SparseIntArray().apply {
-    append(Surface.ROTATION_0, 270)
-    append(Surface.ROTATION_90, 180)
-    append(Surface.ROTATION_180, 90)
-    append(Surface.ROTATION_270, 0)
   }
 
   @RequiresApi(VERSION_CODES.N)
@@ -200,7 +197,7 @@ class MainActivity : AppCompatActivity() {
           ) {
             startCamera()
           } else {
-            showToast(R.string.need_permission, null)
+            showToast(R.string.need_permission)
             getPermission()
           }
         } else {
@@ -212,7 +209,7 @@ class MainActivity : AppCompatActivity() {
   }
 
   private fun startBackgroundThread() {
-    handlerThread = HandlerThread("background thread")
+    handlerThread = HandlerThread("backgroundthread")
     handlerThread?.start()
     handler = Handler(handlerThread?.looper)
   }
@@ -300,21 +297,9 @@ class MainActivity : AppCompatActivity() {
     cameraDevice?.let {
       request = it.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
       request?.addTarget(previewSurface)
-      cameraCaptureSession?.setRepeatingRequest(request?.build(), object : CaptureCallback() {
-        override fun onCaptureCompleted(
-          session: CameraCaptureSession?,
-          request: CaptureRequest?,
-          result: TotalCaptureResult?
-        ) {
-        }
-
-        override fun onCaptureFailed(
-          session: CameraCaptureSession?,
-          request: CaptureRequest?,
-          failure: CaptureFailure?
-        ) {
-        }
-      }, handler)
+      cameraCaptureSession?.setRepeatingRequest(
+          request?.build(), object : CaptureCallback() {}, handler
+      )
     }
   }
 
@@ -323,7 +308,7 @@ class MainActivity : AppCompatActivity() {
       return
     }
     try {
-      val thread = HandlerThread("CameraPreview")
+      val thread = HandlerThread("previewthread")
       thread.start()
       cameraCaptureSession?.setRepeatingRequest(request?.build(), null, handler)
     } catch (e: CameraAccessException) {
@@ -382,22 +367,18 @@ class MainActivity : AppCompatActivity() {
         mediaRecorder.setOrientationHint(INVERSE_ORIENTATIONS.get(rotation))
     }
 
+    if (videoPath == null) {
+      videoPath = getVideoFilePath()
+    }
+
     mediaRecorder.apply {
       setVideoSource(MediaRecorder.VideoSource.SURFACE)
       setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-      if (videoPath == null) {
-        videoPath = getVideoFilePath()
-      }
       setOutputFile(videoPath)
       setVideoSize(videoSize.width, videoSize.height)
       setVideoEncoder(MediaRecorder.VideoEncoder.MPEG_4_SP)
       prepare()
     }
-  }
-
-  private fun getVideoFilePath(): String {
-    val file = createNewVideoFile()
-    return file.absolutePath
   }
 
   private fun stopRecordingVideo() {
@@ -454,31 +435,12 @@ class MainActivity : AppCompatActivity() {
     }
   }
 
-  private fun showToast(
-    message: Int?,
-    messageString: String?
-  ) {
-    message?.let {
-      Toast.makeText(
-          this, it, Toast.LENGTH_SHORT
-      )
-          .show()
-    }
-
-    messageString?.let {
-      Toast.makeText(
-          this, it, Toast.LENGTH_SHORT
-      )
-          .show()
-    }
-  }
-
   private fun addAudioToVideo(
     videoPath: String
   ) {
-    val outputFile: String = getVideoFilePath()
-
     try {
+      val outputFile: String = getVideoFilePath()
+
       val videoExtractor = MediaExtractor()
       videoExtractor.setDataSource(videoPath)
 
@@ -545,7 +507,7 @@ class MainActivity : AppCompatActivity() {
 
       muxer.stop()
       muxer.release()
-      showToast(null, "Video file saved at $outputFile")
+      showToast("Video file saved at $outputFile")
 
       val file = File(videoPath)
       if (file.exists()) {
@@ -554,6 +516,27 @@ class MainActivity : AppCompatActivity() {
 
     } catch (e: Exception) {
       e.printStackTrace()
+    }
+  }
+
+  private fun showToast(
+    message: Int?
+
+  ) {
+    message?.let {
+      Toast.makeText(
+          this, it, Toast.LENGTH_SHORT
+      )
+          .show()
+    }
+  }
+
+  private fun showToast(message: String?) {
+    message?.let {
+      Toast.makeText(
+          this, it, Toast.LENGTH_SHORT
+      )
+          .show()
     }
   }
 

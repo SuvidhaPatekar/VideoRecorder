@@ -13,3 +13,9 @@ fun createNewVideoFile(): File {
   val imageName = "video-" + System.currentTimeMillis() + ".mp4"
   return File(mkDir, imageName)
 }
+
+fun getVideoFilePath(): String {
+  val file = createNewVideoFile()
+  return file.absolutePath
+}
+
